@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context" xmlns:batch="http://www.springframework.org/schema/batch"
+    xmlns:int="http://www.springframework.org/schema/integration" xmlns:int-file="http://www.springframework.org/schema/integration/file"
+    xmlns:batch-int="http://www.springframework.org/schema/batch-integration"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+        http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch-3.0.xsd
+        http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration-4.0.xsd
+        http://www.springframework.org/schema/integration/file http://www.springframework.org/schema/integration/file/spring-integration-file-4.0.xsd
+        http://www.springframework.org/schema/batch-integration http://www.springframework.org/schema/batch-integration/spring-batch-integration-1.3.xsd
+        http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd">
+
+    <context:property-placeholder ignore-unresolvable="true"/>
+    <import resource="launch-context.xml"/>
+    
+    <int:channel id="inputFileChannel" />
+    <int:channel id="processingFileChannel" />
+    <int:channel id="processedFileChannel" />
+    <int:channel id="finishedFileChannel" />
+    <int:channel id="jobRequestChannel" />
+    <int:channel id="jobExecutionChannel" />
+    <int:channel id="errorChannel" />
+    
+    <bean id="applicationRunner" class="de.proadvise.customer.InterfaceSapSiemensMuc.ApplicationRunnerImpl">
+        <property name="filePeeker" ref="filePeeker" />
+        <property name="inboundGateway" ref="inputFilesGateway" />
+    </bean>
+    
+    <bean id="inputFilesSourceFilter" class="org.springframework.integration.file.filters.RegexPatternFileListFilter">
+        <constructor-arg value="^(P6|SAP|BA|AV)-(P6|SAP|BA|AV)-MFMCH-.*\.txt$" />
+    </bean>
+    <bean id="inputFilesSource" class="org.springframework.integration.file.FileReadingMessageSource">
+        <property name="directory" value="${application.directory.input}" />
+        <property name="filter" ref="inputFilesSourceFilter" />
+    </bean>
+    <bean id="filePeeker" class="de.proadvise.customer.InterfaceSapSiemensMuc.integration.FilePeekerImpl">
+        <property name="fileSource" ref="inputFilesSource" />
+        <property name="explicitFilePath" value="${file:}"></property>
+    </bean>
+    <int:gateway id="inputFilesGateway" default-request-channel="inputFileChannel" error-channel="errorChannel"
+            service-interface="de.proadvise.customer.InterfaceSapSiemensMuc.integration.InputFileGateway">
+    </int:gateway>
+    
+    <int-file:outbound-gateway id="processingFileMover" request-channel="inputFileChannel" order="1" reply-channel="processingFileChannel" 
+            directory="${application.directory.input}" delete-source-files="true"
+            filename-generator-expression="payload.name + '.PROCESS'" mode="REPLACE" />
+    
+    <int:service-activator id="filenameToJobLaunchRequestAdapter" input-channel="processingFileChannel" order="1" ref="filenameToJobLaunchRequest" output-channel="jobRequestChannel" />
+    <bean id="filenameToJobLaunchRequest" class="de.proadvise.customer.InterfaceSapSiemensMuc.integration.FilenameToJobLaunchRequestAdapter">
+        <property name="jobRegistry" ref="jobRegistry" />
+        <property name="file2JobNameMap">
+            <map>
+                <entry key="SAP-P6*" value="sapp6ImportJob" />
+                <entry key="AV-P6*" value="avp6ImportJob" />
+                <entry key="BA-P6*" value="bap6ImportJob" />
+                <entry key="P6-SAP*" value="p6sapExportJob" />
+                <entry key="P6-AV*" value="p6avExportJob" />
+                <entry key="P6-BA*" value="p6baExportJob" />
+            </map>
+        </property>
+    </bean>
+    
+    <int:service-activator id="jobLaunchingGateway" input-channel="jobRequestChannel" order="1" output-channel="jobExecutionChannel">
+        <bean id="jobLaunchingMessageHandler" class="org.springframework.batch.integration.launch.JobLaunchingMessageHandler">
+            <constructor-arg ref="jobLauncher" />
+        </bean>
+    </int:service-activator>
+    
+    <int:chain id="failedJobRequestProcessor" input-channel="jobRequestChannel" order="10" output-channel="processedFileChannel">
+        <int:header-enricher>
+            <int:header name="job.result" value="FAILED" />
+        </int:header-enricher>
+        <int:service-activator id="failedJobRequestGateway">
+            <bean id="failedJobRequestHandler" class="de.proadvise.customer.InterfaceSapSiemensMuc.integration.FailedJobRequestHandler" />
+        </int:service-activator>
+    </int:chain>
+    
+    <int:chain id="jobExecutionProcessor" input-channel="jobExecutionChannel" order="1" output-channel="processedFileChannel">
+        <int:header-enricher >
+            <int:header name="job.result" ref="jobResultResolver" method="mapResult" />
+        </int:header-enricher>
+        <int:service-activator ref="jobExecutionToFileAdapter" />
+    </int:chain>
+    
+    <int-file:outbound-gateway directory="${application.directory.input}" delete-source-files="true" 
+            request-channel="processedFileChannel" order="1" reply-channel="finishedFileChannel" 
+            filename-generator-expression="headers['job.result'] + '_' + payload.name.replaceFirst('.PROCESS', '')" mode="REPLACE" />
+    
+    <bean id="jobResultResolver" class="de.proadvise.customer.InterfaceSapSiemensMuc.integration.JobResultResolver" />
+    <bean id="jobExecutionToFileAdapter" class="de.proadvise.customer.InterfaceSapSiemensMuc.integration.JobExecutionToFileAdapter" />
+    
+    <int:logging-channel-adapter id="processingFileChannelLogger" level="INFO" logger-name="de.proadvise" 
+            expression="'Rename original file ' + headers['file_originalFile'] + ' to ' + payload.name" />
+    <int:wire-tap pattern="processingFileChannel" channel="processingFileChannelLogger" />
+    
+    <int:logging-channel-adapter order="1000" channel="processingFileChannel" level="INFO" logger-name="de.proadvise" 
+            expression="'Processing file '" />
+    <int:logging-channel-adapter order="1000" channel="jobRequestChannel" level="INFO" log-full-message="true"
+        logger-name="de.proadvise.logger" />
+    <int:logging-channel-adapter order="1000" channel="jobExecutionChannel" level="INFO" log-full-message="true" 
+            logger-name="de.proadvise" />
+
+    <int:service-activator input-channel="errorChannel" order="1">
+        <bean id="exceptionHandler" class="de.proadvise.customer.InterfaceSapSiemensMuc.integration.ExceptionHandlerService" />
+    </int:service-activator>
+
+    <int:logging-channel-adapter channel="finishedFileChannel" level="INFO" logger-name="de.proadvise" 
+            expression="'Rename processed file to [' + payload.name + '] in directory [' + payload.parent + ']'"/>
+</beans>

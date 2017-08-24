@@ -1,0 +1,7 @@
+Hallo,
+
+die Schnittstelle $jobname ist erfolgreich durchgelaufen.
+
+Sie finden das Verarbeitungsprotokoll unter:
+
+file://$protocol_path/$protocol_name

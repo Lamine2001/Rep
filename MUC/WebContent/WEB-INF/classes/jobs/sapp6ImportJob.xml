@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:util="http://www.springframework.org/schema/util" xmlns:batch="http://www.springframework.org/schema/batch"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+		http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-4.0.xsd
+		http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch-3.0.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd">
+
+    <!-- Loese Properties auf, falls Job im Funktionstest ohne Application gestartet worden ist -->
+    <context:property-placeholder order="10000" location="classpath:application.properties" ignore-unresolvable="true" />
+    
+    <import resource="classpath:protocol-context.xml" />
+    <import resource="classpath:jobs/sapp6ImportJob.cacheDataSource.xml" />
+    <import resource="classpath:jobs/sapp6ImportJob.cacheActivityStep.xml"/>
+    
+    <bean id="inputFile" class="org.springframework.core.io.FileSystemResource" scope="job">
+        <constructor-arg value="#{jobParameters['input.file']}" />
+    </bean>
+
+    <!-- Reader    -->
+    <bean id="sapFileItemReader" class="org.springframework.batch.item.file.FlatFileItemReader" scope="step">
+        <property name="resource" ref="inputFile" />
+        <property name="lineMapper">
+            <bean
+                class="org.springframework.batch.item.file.mapping.DefaultLineMapper">
+                <property name="lineTokenizer">
+                    <bean
+                        class="org.springframework.batch.item.file.transform.DelimitedLineTokenizer">
+                        <property name="delimiter">
+                            <util:constant
+                                static-field="org.springframework.batch.item.file.transform.DelimitedLineTokenizer.DELIMITER_TAB" />
+                        </property>
+                        <property name="names"
+                            value="${sapp6.input.file.column.names}" />
+                    </bean>
+                </property>
+                <property name="fieldSetMapper">
+                    <bean
+                        class="de.proadvise.customer.InterfaceSapSiemensMuc.item.transform.SapP6ItemFieldSetMapper">
+                        <property name="dateFormat"
+                            value="${sapp6.input.file.dateFormat}" />
+                    </bean>
+                </property>
+            </bean>
+        </property>
+    </bean>
+
+    <bean id="sapP6Bean" class="de.proadvise.customer.InterfaceSapSiemensMuc.domain.SapItem" scope="prototype" />
+        
+    <!-- Processor -->
+    <bean id="sapItem2ActivityMappingProcessor" class="de.proadvise.tool.batch.item.mapping.ItemMappingProcessor" scope="step">
+        <property name="mapper" ref="sapItem2ActivityMapper" />
+    </bean>
+    
+    <bean id="sapItem2ActivityMapper" class="de.proadvise.customer.InterfaceSapSiemensMuc.item.mapper.SapItem2ActivityMapper" scope="step">
+        <property name="identifying" ref="activityIdentifying" />
+        <property name="mapping" ref="sapItem2ActivityMapping" />
+    </bean>
+    
+    <bean id="activityIdentifying" class="de.proadvise.customer.InterfaceSapSiemensMuc.item.mapper.CachedActivityIdentifying" scope="step">
+        <property name="sessionFactory" ref="sessionFactory" />
+        <property name="activityService" ref="cachedActivityService" />
+    </bean>
+    <bean id="cachedActivityService" class="de.proadvise.customer.InterfaceSapSiemensMuc.service.JpaCachedActivityService" scope="step">
+        <property name="entityManagerFactory" ref="cacheEntityManagerFactory" />
+    </bean>
+    
+    <bean id="sapItem2ActivityMapping" class="de.proadvise.customer.InterfaceSapSiemensMuc.item.mapper.SapItem2ActivityMapping" scope="step"/>
+
+    <!-- Writer    -->
+    <!-- Hinweis: Wenn die Activity aus der DB geladen worden ist, muss auch 
+        das Feld + CreateDate geladen worden sein! -->
+    <bean id="activityWriter" class="de.proadvise.tool.batch.item.p6api.P6ItemWriter" scope="step">
+        <property name="p6SessionFactory" ref="sessionFactory" />
+        <property name="boHelper">
+            <bean id="activityHelperFactory"
+                class="de.proadvise.tool.p6util.dao.BoHelperFactoryBean">
+                <property name="boType"
+                    value="com.primavera.integration.client.bo.object.Activity" />
+            </bean>
+        </property>
+    </bean>
+    
+    <!-- Validation -->
+    <bean id="p6Dictionary" class="java.util.concurrent.ConcurrentHashMap" scope="job" />
+        
+    <bean id="dictionaryConfiguration" class="org.apache.commons.configuration.CompositeConfiguration" scope="job">
+        <constructor-arg>
+            <list>
+                <ref bean="applicationConfiguration" />
+                <bean id="p6DictionaryValidation" class="org.apache.commons.configuration.PropertiesConfiguration">
+                    <constructor-arg value="validation/p6sap_validation_import.properties" />
+                </bean>
+            </list>
+        </constructor-arg>
+    </bean>
+
+    <bean id="projectCodeTypeValidator" class="de.proadvise.tool.p6util.validation.ProjectCodeTypeValidator" scope="step">
+        <property name="sessionFactory" ref="sessionFactory" />
+        <property name="dictionary" ref="p6Dictionary" />
+    </bean>
+    <bean id="projectCodeValidator" class="de.proadvise.tool.p6util.validation.ProjectCodeValidator" scope="step">
+        <property name="sessionFactory" ref="sessionFactory" />
+        <property name="dictionary" ref="p6Dictionary" />
+    </bean>
+    <bean id="udfTypeValidator" class="de.proadvise.tool.p6util.validation.UdfTypeValidator" scope="step">
+        <property name="sessionFactory" ref="sessionFactory" />
+        <property name="subjectArea" value="Activity" />
+        <property name="dictionary" ref="p6Dictionary" />
+    </bean>
+    
+    <bean id="dictionaryValidator" class="de.proadvise.tool.p6util.validation.P6DictionaryValidator" scope="step">
+        <property name="dictionaryObjectValidators">
+            <map>
+                <entry key="project_code_type" value-ref="projectCodeTypeValidator" />
+                <entry key="project_code" value-ref="projectCodeValidator" />
+                <entry key="udf_type" value-ref="udfTypeValidator" />
+            </map>
+        </property>
+    </bean>
+    <bean id="validationErrors" class="de.proadvise.tool.p6util.validation.ConfigurationBindingResult" scope="step">
+        <constructor-arg ref="dictionaryConfiguration" />
+    </bean>
+    
+    <bean id="p6DictionaryValidationTasklet" class="de.proadvise.tool.batch.tasklet.P6DictionaryValidationTasklet" scope="step">
+        <property name="dictionaryConfiguration" ref="dictionaryConfiguration" />
+        <property name="dictionaryValidator" ref="dictionaryValidator" />
+        <property name="validationErrors" ref="validationErrors"/>
+    </bean>
+
+    <!-- Job Definition -->
+    <batch:step id="validation">
+        <batch:tasklet ref="p6DictionaryValidationTasklet" />
+    </batch:step>
+    
+    <batch:step id="importStep">
+        <tasklet>
+            <chunk reader="sapFileItemReader" writer="activityWriter" processor="sapItem2ActivityMappingProcessor"
+               commit-interval="250" />
+        </tasklet>
+    </batch:step>
+
+    <batch:step id="mailOnCompleteStep">
+        <batch:tasklet ref="onCompletionMailSenderTasklet" />
+    </batch:step>
+    
+    <batch:step id="mailOnFailedStep">
+        <batch:tasklet ref="onFailedMailSenderTasklet" />
+    </batch:step>
+
+    <batch:job id="sapp6ImportJob">
+        <batch:step id="s1_validation" parent="validation" >
+            <batch:next on="FAILED" to="s3b_onFailed" />
+            <batch:next on="*" to="s2_cache" />
+            <batch:listeners>
+                <batch:listener ref="protocol" />
+            </batch:listeners>
+        </batch:step>
+        <batch:step id="s2_cache" parent="cacheActivityStep">
+            <batch:next on="FAILED" to="s3b_onFailed" />
+            <batch:next on="*" to="s2_import" />
+        </batch:step>
+        <batch:step id="s2_import" parent="importStep" >
+            <batch:next on="FAILED" to="s3b_onFailed" />
+            <batch:next on="*" to="s3a_onComplete" />
+            <batch:listeners>
+                <batch:listener ref="protocol" />
+            </batch:listeners>
+        </batch:step>
+        <batch:step id="s3a_onComplete" parent="mailOnCompleteStep" />
+        <batch:step id="s3b_onFailed" parent="mailOnFailedStep" >
+            <batch:fail on="*" />
+        </batch:step>
+        <batch:listeners>
+            <batch:listener ref="protocol" />
+        </batch:listeners>
+    </batch:job>
+
+</beans>

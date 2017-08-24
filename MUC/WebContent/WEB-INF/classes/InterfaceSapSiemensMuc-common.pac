@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<paCrypt>
+  <Encryption_Mode>pa</Encryption_Mode>
+  <Users>
+    <UserType>Admin</UserType>
+    <UserName>admin</UserName>
+    <PW>npJG6Kg+giAfhoaSsZGcGA==</PW>
+    <Name>p6_user</Name>
+    <eMail/>
+    <Module>P6</Module>
+  </Users>
+  <Users>
+    <UserType>Admin</UserType>
+    <UserName>admin</UserName>
+    <PW>npJG6Kg+giAfhoaSsZGcGA==</PW>
+    <Name>admin admin user</Name>
+    <eMail/>
+    <Module>admin</Module>
+  </Users>
+  <Users>
+    <UserType>Admin</UserType>
+    <UserName>admuser</UserName>
+    <PW>ZRyOfEkdKekixggIW87xMw==</PW>
+    <Name>db_user</Name>
+    <eMail/>
+    <Module>DB</Module>
+  </Users>
+  <Users>
+    <UserType>Admin</UserType>
+    <UserName>admin@proadvise.de</UserName>
+    <PW>fQdT/2YWkVVP/l+CcGCYEA==</PW>
+    <Name>smtp_user</Name>
+    <eMail>admin@proadvise.de</eMail>
+    <Module>SMTP</Module>
+  </Users>
+  <Users>
+    <UserType>User</UserType>
+    <UserName>sa</UserName>
+    <PW>WV7v3LXabnUDemwY2cE8DQ==</PW>
+    <Name>Erster user fuer HSQL DB</Name>
+    <eMail/>
+    <Module>API</Module>
+  </Users>
+  <Users>
+    <UserType>User</UserType>
+    <UserName>sa</UserName>
+    <PW>WV7v3LXabnUDemwY2cE8DQ==</PW>
+    <Name>zweiter user fuer HSQLDB</Name>
+    <eMail/>
+    <Module>HSQL</Module>
+  </Users>
+  <Users>
+    <UserType>User</UserType>
+    <UserName>pabatchuser</UserName>
+    <PW>U1fQVILdM3fTHJ/S+E2LAw==</PW>
+    <Name>pabatchuser fuer das JobRepository auf 88</Name>
+    <eMail/>
+    <Module>DB</Module>
+  </Users>
+</paCrypt>

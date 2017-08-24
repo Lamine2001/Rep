@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:batch="http://www.springframework.org/schema/batch"
+    xmlns:int="http://www.springframework.org/schema/integration"
+    xmlns:int-file="http://www.springframework.org/schema/integration/file"
+    xmlns:batch-int="http://www.springframework.org/schema/batch-integration"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+        http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch-3.0.xsd
+        http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration-4.0.xsd
+        http://www.springframework.org/schema/integration/file http://www.springframework.org/schema/integration/file/spring-integration-file-4.0.xsd
+        http://www.springframework.org/schema/batch-integration http://www.springframework.org/schema/batch-integration/spring-batch-integration-1.3.xsd
+        http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd">
+
+    <context:property-placeholder order="100" />
+    
+    <bean id="syncTaskExecutor" class="org.springframework.core.task.SyncTaskExecutor" />
+    
+    <bean id="applicationConfiguration" class="de.proadvise.customer.InterfaceSapSiemensMuc.configuration.OptionalCompositeConfiguration">
+        <property name="configurationLocations">
+            <list>
+                <value>config/application.properties</value>
+                <value>application.properties</value>
+            </list>
+        </property>
+    </bean>
+    
+    
+    <bean id="sessionFactory"
+        class="de.proadvise.tool.p6util.connection.P6SessionFactoryImpl"
+        destroy-method="disconnectAll" scope="job">
+        <property name="bootstrapHomePath" value="config" />
+        <property name="sessionsConfiguration" ref="applicationConfiguration" />
+        <property name="passwordExtractor" ref="passwordExtractor"></property>
+    </bean>
+    
+      <bean id="passwordExtractor" class="de.proadvise.paCrypt.decrypt.PaCryptConfigurationPasswordExtractor">
+        <property name="decrypter" ref="decrypter" />
+    </bean>
+
+    <bean id="decrypter" class="de.proadvise.paCrypt.decrypt.DecrypterImpl" init-method="initialize">
+        <property name="userService" ref="xmlUserService" />
+    </bean>
+
+    <bean id="passwordResource" class="org.springframework.core.io.FileSystemResource">
+        <constructor-arg value="${application.password_file}" />
+    </bean>
+    
+    <bean id="xmlUserService" class="de.proadvise.paCrypt.decrypt.services.XmlUserService">
+        <property name="pwFile" ref="passwordResource" />
+        <property name="xmlUserFactory" ref="userFactory" />
+    </bean>
+
+    <bean id="userFactory" class="de.proadvise.paCrypt.decrypt.services.XmlUserFactory" />
+
+    <bean id="jobRegistry" class="org.springframework.batch.core.configuration.support.MapJobRegistry" scope="singleton" />
+    <bean id="registeredJobContexts" class="org.springframework.batch.core.configuration.support.ClasspathXmlApplicationContextsFactoryBean">
+        <property name="resources" value="classpath:jobs/*Job.xml" />
+    </bean>
+    <bean id="jobRegistrar" class="org.springframework.batch.core.configuration.support.AutomaticJobRegistrar" scope="singleton">
+        <property name="applicationContextFactories" ref="registeredJobContexts" />
+        <property name="jobLoader">
+            <bean id="registrarJobLoader" class="org.springframework.batch.core.configuration.support.DefaultJobLoader">
+                <property name="jobRegistry" ref="jobRegistry" />
+            </bean>
+        </property>
+    </bean>
+    
+    <bean id="jobExplorer" class="org.springframework.batch.core.explore.support.JobExplorerFactoryBean">
+        <property name="dataSource" ref="dataSource" />
+    </bean>
+    
+    <batch:job-repository  isolation-level-for-create="READ_COMMITTED" lob-handler="oracleLobHandler"/>
+    
+    <bean id="jobLauncher" class="de.proadvise.tool.batch.launch.ParallelRestrictionJobLauncher">
+        <property name="jobExplorer" ref="jobExplorer" />
+        <property name="jobRepository" ref="jobRepository" />
+        <property name="taskExecutor" ref="syncTaskExecutor" />
+    </bean>
+    
+    <bean id="nativeJdbcExtractor" class="org.springframework.jdbc.support.nativejdbc.OracleJdbc4NativeJdbcExtractor"/>
+    
+    <bean id="oracleLobHandler" class="org.springframework.jdbc.support.lob.OracleLobHandler">
+        <property name="nativeJdbcExtractor" ref="nativeJdbcExtractor" />
+    </bean>
+    
+    <bean id="batchPasswordConfiguration" factory-bean="applicationConfiguration" factory-method="subset">
+        <constructor-arg value="batch.jdbc" />
+    </bean>
+    
+    <bean id="dataSource" class="org.apache.commons.dbcp.BasicDataSource"
+            destroy-method="close" scope="singleton">
+        <property name="driverClassName" value="${batch.jdbc.driverClassName}" />
+        <property name="url" value="${batch.jdbc.url}" />
+        <property name="username" value="${batch.jdbc.username}" />
+        <property name="password">
+            <bean factory-bean="passwordExtractor" factory-method="extractPassword">
+                <constructor-arg ref="batchPasswordConfiguration" />
+            </bean>
+        </property>
+        <property name="maxActive" value="10" />
+    </bean>
+
+    <bean id="transactionManager"
+        class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <property name="dataSource" ref="dataSource" />
+    </bean>
+    
+</beans>

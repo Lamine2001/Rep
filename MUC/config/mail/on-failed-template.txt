@@ -1,0 +1,9 @@
+Hallo,
+
+die Schnittstelle $jobname ist mit folgender Fehlermeldung abgebrochen:
+
+$error
+
+Sie finden das Verarbeitungsprotokoll unter:
+
+file://$protocol_path/$protocol_name

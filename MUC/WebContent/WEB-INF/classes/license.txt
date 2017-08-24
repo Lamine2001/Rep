@@ -1,0 +1,18 @@
+proadvise InterfaceSapSiemensMuc License
+===============================================
+
+Except where otherwise noted, all of the documentation and software included
+in the InterfaceSapSiemensMuc package is copyrighted by proadvise GmbH.
+
+Copyright (C) 2014 proadvise GmbH. All rights reserved.
+
+proadvise GmbH
+Bruehlweg 4
+73663 Berglen
+
+Zentrale:
+Tel. / Fax:         +49 (0)700-776238473
+Tel. / Fax:         +49 (0)700- proadvise
+ 
+Email:              info@proadvise.com 
+Web:                http://www.proadvise.com

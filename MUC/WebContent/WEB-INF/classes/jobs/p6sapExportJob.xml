@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:util="http://www.springframework.org/schema/util" xmlns:batch="http://www.springframework.org/schema/batch"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+		http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-4.0.xsd
+		http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch-3.0.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd">
+
+    <!-- Loese Properties auf, falls Job im Funktionstest ohne Application gestartet worden ist -->
+    <context:property-placeholder order="10000" location="classpath:application.properties" ignore-unresolvable="true" />
+    
+    <import resource="classpath:protocol-context.xml" />
+    <import resource="classpath:activityGraph-context.xml"/>
+    <import resource="classpath:projectGraph-context.xml"/>
+    
+
+    <bean id="nestedGraphReader" class="de.proadvise.tool.batch.item.support.NestedItemReader" scope="step">
+        <property name="parentDelegate" ref="projectGraphReader"/>
+        <property name="childDelegate" ref="activityGraphReader"/>
+        <property name="mediator" ref="projectGraphMediator"/>
+    </bean>
+
+    <bean id="projectGraphMediator" class="de.proadvise.customer.InterfaceSapSiemensMuc.dao.bograph.ProjectActivityGraphMediator" scope="step">
+        <constructor-arg ref="projectBeanConditionParameters"/>
+    </bean>
+    
+    <bean id="activityProjectConditionParameters" class="de.proadvise.tool.p6util.dao.namedparam.CompositeConditionParameters" scope="step">
+        <property name="delegates">
+            <list>
+                <ref bean="projectBeanConditionParameters"/>
+                <ref bean="activityUpdateDateConditionParameters" />
+            </list>
+        </property>
+    </bean>
+    <bean id="projectBeanConditionParameters" class="de.proadvise.tool.p6util.dao.namedparam.BeanConditionParameters" scope="step"/>
+    <bean id="activityUpdateDateConditionParameters" class="de.proadvise.tool.p6util.dao.namedparam.MapConditionParameters" scope="step">
+        <constructor-arg>
+            <map>
+                <entry key="exportUpdateDate">
+                    <bean id="parsedExportUpdateDate" factory-bean="exportUpdateDateFormat" factory-method="parse">
+                        <constructor-arg value="#{jobParameters['input.exportUpdateDate']}" />
+                    </bean>
+                </entry> 
+            </map>
+        </constructor-arg>
+    </bean>
+    <bean id="exportUpdateDateFormat" class="java.text.SimpleDateFormat">
+        <constructor-arg value="yyMMdd" />
+    </bean>
+    
+    <!-- activityQueryProvider fuer die ActivityGraphFactory -->
+    <bean id="activityQueryProvider" class="de.proadvise.tool.p6util.dao.DefaultP6QueryProvider" scope="step">
+        <property name="fields" value="ObjectId,ProjectObjectId,Id,ProjectId,StartDate,FinishDate,PrimaryResourceId"></property>
+        <property name="whereClausePattern" value="ProjectObjectId = :objectId and LastUpdateDate >= :exportUpdateDate"></property>
+        <property name="orderByClause" value="ProjectObjectId,ObjectId"></property>
+    </bean>
+    
+    <!-- Processor -->
+    <bean id="sapExportGraphValidator" class="de.proadvise.customer.InterfaceSapSiemensMuc.item.validator.SapActivityGraphValidator" scope="step">
+        <property name="p6Dictionary" ref="p6Dictionary" />
+    </bean>
+    <bean id="sapExportProcessor" class="org.springframework.batch.item.support.CompositeItemProcessor" scope="step">
+        <property name="delegates">
+            <list>
+                <bean id="graphFilterProcessor" class="org.springframework.batch.item.validator.ValidatingItemProcessor">
+                    <property name="filter" value="true" />
+                    <property name="validator" ref="sapExportGraphValidator" />
+                </bean>
+                <bean id="activityGraph2SapBeanMapperProcessor"
+                    class="de.proadvise.customer.InterfaceSapSiemensMuc.item.ActivityGraph2SapBeanMapperProcessor"
+                    scope="step">
+                    <property name="p6Dictionary" ref="p6Dictionary"></property>
+                    <property name="stellplatzDefaultValue"
+                        value="${sapp6.input.file.stellplatz.default_value}"></property>
+                </bean>
+            </list>
+        </property>
+    </bean>
+
+    <bean id="p6Dictionary" class="java.util.concurrent.ConcurrentHashMap" scope="job" />
+    
+    <!-- Writer    -->
+    <bean id="outputFile" class="org.springframework.core.io.FileSystemResource" scope="job">
+        <constructor-arg value="#{jobParameters['input.file']}" />
+    </bean>
+
+    <bean id="sapFileWriter" class="org.springframework.batch.item.file.FlatFileItemWriter" scope="step">
+        <property name="resource" ref="outputFile" />
+        <property name="lineAggregator" ref="lineAggregator" />
+    </bean>
+
+    <bean id="lineAggregator" class="org.springframework.batch.item.file.transform.DelimitedLineAggregator" scope="step">
+        <property name="fieldExtractor">
+            <bean class="de.proadvise.customer.InterfaceSapSiemensMuc.item.transform.SapItemFieldExtractor">
+                <property name="dateFormat" value="${sapp6.input.file.dateFormat}" />
+            </bean>
+        </property>
+        <property name="delimiter">
+            <util:constant
+                static-field="org.springframework.batch.item.file.transform.DelimitedLineTokenizer.DELIMITER_TAB" />
+        </property>
+    </bean>
+    
+    <!-- Validation -->
+    
+    <bean id="dictionaryConfiguration" class="org.apache.commons.configuration.CompositeConfiguration" scope="job">
+        <constructor-arg>
+            <list>
+                <ref bean="applicationConfiguration" />
+                <bean id="p6DictionaryValidation" class="org.apache.commons.configuration.PropertiesConfiguration">
+                    <constructor-arg value="validation/p6sap_validation_export.properties" />
+                </bean>
+            </list>
+        </constructor-arg>
+    </bean>
+    
+    <bean id="activityCodeTypeValidator" class="de.proadvise.tool.p6util.validation.ActivityCodeTypeValidator" scope="step">
+        <property name="sessionFactory" ref="sessionFactory" />
+        <property name="dictionary" ref="p6Dictionary" />
+    </bean>
+    <bean id="activityCodeValidator" class="de.proadvise.tool.p6util.validation.ActivityCodeValidator" scope="step">
+        <property name="sessionFactory" ref="sessionFactory" />
+        <property name="dictionary" ref="p6Dictionary" />
+    </bean>
+    <bean id="projectCodeTypeValidator" class="de.proadvise.tool.p6util.validation.ProjectCodeTypeValidator" scope="step">
+        <property name="sessionFactory" ref="sessionFactory" />
+        <property name="dictionary" ref="p6Dictionary" />
+    </bean>
+    <bean id="projectCodeValidator" class="de.proadvise.tool.p6util.validation.ProjectCodeValidator" scope="step">
+        <property name="sessionFactory" ref="sessionFactory" />
+        <property name="dictionary" ref="p6Dictionary" />
+    </bean>
+    <bean id="udfTypeValidator" class="de.proadvise.tool.p6util.validation.UdfTypeValidator" scope="step">
+        <property name="sessionFactory" ref="sessionFactory" />
+        <property name="subjectArea" value="Activity" />
+        <property name="dictionary" ref="p6Dictionary" />
+    </bean>
+    
+    <bean id="dictionaryValidator" class="de.proadvise.tool.p6util.validation.P6DictionaryValidator" scope="step">
+        <property name="dictionaryObjectValidators">
+            <map>
+                <entry key="activity_code_type" value-ref="activityCodeTypeValidator" />
+                <entry key="activity_code" value-ref="activityCodeValidator" />
+                <entry key="project_code_type" value-ref="projectCodeTypeValidator" />
+                <entry key="project_code" value-ref="projectCodeValidator" />
+                <entry key="udf_type" value-ref="udfTypeValidator" />
+            </map>
+        </property>
+    </bean>
+    <bean id="validationErrors" class="de.proadvise.tool.p6util.validation.ConfigurationBindingResult" scope="step">
+        <constructor-arg ref="dictionaryConfiguration" />
+    </bean>
+    
+    <bean id="p6DictionaryValidationTasklet" class="de.proadvise.tool.batch.tasklet.P6DictionaryValidationTasklet" scope="step">
+        <property name="dictionaryConfiguration" ref="dictionaryConfiguration" />
+        <property name="dictionaryValidator" ref="dictionaryValidator" />
+        <property name="validationErrors" ref="validationErrors"/>
+    </bean>
+
+    <!-- Job Definition -->
+    <batch:step id="validationStep">
+        <batch:tasklet ref="p6DictionaryValidationTasklet" />
+    </batch:step>
+    
+    <batch:step id="exportStep">
+        <tasklet>
+            <chunk reader="nestedGraphReader" processor="sapExportProcessor"
+                writer="sapFileWriter" commit-interval="100" />
+        </tasklet>
+    </batch:step>
+
+    <batch:step id="mailOnCompleteStep">
+        <batch:tasklet ref="onCompletionMailSenderTasklet" />
+    </batch:step>
+    
+    <batch:step id="mailOnFailedStep">
+        <batch:tasklet ref="onFailedMailSenderTasklet" />
+    </batch:step>
+
+    <batch:job id="p6sapExportJob">
+        <batch:step id="s1_validation" parent="validationStep" >
+            <batch:next on="FAILED" to="s3b_onFailed" />
+            <batch:next on="*" to="s2_export" />
+            <batch:listeners>
+                <batch:listener ref="protocol" />
+            </batch:listeners>
+        </batch:step>
+        <batch:step id="s2_export" parent="exportStep" >
+            <batch:next on="FAILED" to="s3b_onFailed" />
+            <batch:next on="*" to="s3a_onComplete" />
+            <batch:listeners>
+                <batch:listener ref="protocol" />
+            </batch:listeners>
+        </batch:step>
+        <batch:step id="s3a_onComplete" parent="mailOnCompleteStep" />
+        <batch:step id="s3b_onFailed" parent="mailOnFailedStep" >
+            <batch:fail on="*" />
+        </batch:step>
+        <batch:listeners>
+            <batch:listener ref="protocol" />
+        </batch:listeners>
+    </batch:job>
+
+</beans>

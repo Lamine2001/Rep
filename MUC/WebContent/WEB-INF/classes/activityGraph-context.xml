@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns:batch="http://www.springframework.org/schema/batch"
+    xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:util="http://www.springframework.org/schema/util"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+        http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-4.0.xsd
+        http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch-3.0.xsd
+        http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd">
+        
+    <bean id="activityGraphReader" class="de.proadvise.customer.InterfaceSapSiemensMuc.dao.bograph.ActivityGraphReaderImpl" scope="step">
+        <property name="actvityGraphFactory" ref="actvityGraphFactory" />
+    </bean>
+    
+    <bean id="actvityGraphFactory" class="de.proadvise.customer.InterfaceSapSiemensMuc.dao.bograph.ActivityGraphFactoryImpl" scope="step" >
+        <property name="activityDao" ref="activityDao" />
+        <property name="activityQueryProvider" ref="activityQueryProvider" />
+        <property name="activityConditionParameters" ref="activityProjectConditionParameters" />
+        <property name="relatedBoServiceList" ref="relatedBoServiceList" />
+    </bean>
+    
+    <bean id="activityDao" class="de.proadvise.tool.p6util.dao.DefaultBoDao" scope="step" >
+        <constructor-arg value="com.primavera.integration.client.bo.object.Activity"/>
+        <property name="sessionFactory" ref="sessionFactory"></property>
+    </bean>
+    
+    <!-- activityQueryProvider ist im Job-Context enthalten -->
+
+    <util:list id="relatedBoServiceList" value-type="de.proadvise.tool.batch.item.p6api.reader.AbstractRelatedBoService" scope="step">
+        <bean id="udfValueBoService" class="de.proadvise.tool.batch.item.p6api.reader.AbstractRelatedBoService">
+            <property name="boDao">
+                <bean id="udfValueDao" class="de.proadvise.tool.p6util.dao.DefaultBoDao" >
+                    <constructor-arg value="com.primavera.integration.client.bo.object.UDFValue" />
+                    <property name="sessionFactory" ref="sessionFactory" />
+                    <property name="prototypeResultSetBeanName" value="udfValueResultset" />
+                </bean>
+            </property>
+            <property name="bucketFiller">
+                <bean class="de.proadvise.customer.InterfaceSapSiemensMuc.dao.bograph.UdfValueFiller" />
+            </property>
+            <property name="p6QueryProvider">
+                <bean class="de.proadvise.tool.p6util.dao.DefaultP6QueryProvider">
+                    <property name="fields"
+                        value="ProjectObjectId,ForeignObjectId,UDFTypeObjectId,UDFTypeSubjectArea,UDFTypeTitle,Text" />
+                    <property name="whereClausePattern" value="ProjectObjectId = :objectId" />
+                    <property name="orderByClause" value="ProjectObjectId,ForeignObjectId"></property>
+                </bean>
+            </property>
+            <property name="conditionParameters" ref="activityProjectConditionParameters" />
+        </bean>
+        <bean id="activityCodeAssignmentBoService" class="de.proadvise.tool.batch.item.p6api.reader.AbstractRelatedBoService">
+            <property name="boDao">
+                <bean id="activityCodeAssignmentDao" class="de.proadvise.tool.p6util.dao.DefaultBoDao">
+                    <constructor-arg value="com.primavera.integration.client.bo.object.ActivityCodeAssignment" />
+                    <property name="sessionFactory" ref="sessionFactory" />
+                    <property name="prototypeResultSetBeanName" value="activityCodeAssignmentResultset" />
+                </bean>
+            </property>
+            <property name="bucketFiller">
+                <bean id="activityCodeAssignmentFiller" class="de.proadvise.customer.InterfaceSapSiemensMuc.dao.bograph.ActivityCodeAssignmentFillerActivityGraph" />
+            </property>
+            <property name="p6QueryProvider">
+                <bean id="activityCodeAssignmentp6QueryProvider" class="de.proadvise.tool.p6util.dao.DefaultP6QueryProvider">
+                    <property name="fields"
+                        value="ActivityCodeObjectId,ActivityCodeTypeName,ActivityCodeTypeScope,ActivityCodeValue,ActivityObjectId,ProjectObjectId" />
+                    <property name="whereClausePattern" value="ProjectObjectId = :objectId" />
+                    <property name="orderByClause" value="ProjectObjectId,ActivityObjectId"></property>
+                </bean>
+            </property>
+            <property name="conditionParameters" ref="activityProjectConditionParameters" />
+        </bean>
+        <bean id="resourceAssignmentBoService" class="de.proadvise.tool.batch.item.p6api.reader.AbstractRelatedBoService">
+            <property name="boDao">
+                <bean id="resourceAssignmentDao" class="de.proadvise.tool.p6util.dao.DefaultBoDao">
+                    <constructor-arg value="com.primavera.integration.client.bo.object.ResourceAssignment" />
+                    <property name="sessionFactory" ref="sessionFactory" />
+                    <property name="prototypeResultSetBeanName" value="resourceAssignmentResultset" />
+                </bean>
+            </property>
+            <property name="bucketFiller">
+                <bean id="activityCodeAssignmentFiller" class="de.proadvise.customer.InterfaceSapSiemensMuc.dao.bograph.ResourceAssignmentFillerActivityGraph" />
+            </property>
+            <property name="p6QueryProvider">
+                <bean id="resourceAssignmentp6QueryProvider" class="de.proadvise.tool.p6util.dao.DefaultP6QueryProvider">
+                    <property name="fields"
+                        value="ResourceType,ResourceId,ResourceObjectId,ActivityObjectId,ProjectObjectId" />
+                    <property name="whereClausePattern" value="ProjectObjectId = :objectId" />
+                    <property name="orderByClause" value="ProjectObjectId,ActivityObjectId"></property>
+                </bean>
+            </property>
+            <property name="conditionParameters" ref="activityProjectConditionParameters" />
+        </bean>
+    </util:list>
+    
+    <bean id="activityCodeAssignmentResultset" class="de.proadvise.tool.p6util.dao.relation.CachedQueueRelatedBoResultSet"
+        scope="prototype">
+        <property name="comparator">
+            <bean id="activityCodeValueComparator"
+                class="de.proadvise.tool.p6util.dao.relation.ActivityActivityCodeAssignmentRelationComperator"/>
+        </property>
+    </bean>
+    
+    <bean id="resourceAssignmentResultset" class="de.proadvise.tool.p6util.dao.relation.CachedQueueRelatedBoResultSet"
+        scope="prototype">
+        <property name="comparator">
+            <bean id="resourceAssignmentComperator"
+                class="de.proadvise.tool.p6util.dao.relation.ActivityResourceAssignmentRelationComparator"/>
+        </property>
+    </bean>
+
+    <bean id="udfValueResultset" class="de.proadvise.tool.p6util.dao.relation.CachedQueueRelatedBoResultSet"
+        scope="prototype">
+        <property name="comparator">
+            <bean id="activityComparator" class="de.proadvise.tool.p6util.dao.relation.UdfValueRelationComparator"/>
+        </property>
+    </bean>
+    
+    
+</beans>

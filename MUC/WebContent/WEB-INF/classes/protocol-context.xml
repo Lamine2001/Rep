@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context" xmlns:batch="http://www.springframework.org/schema/batch"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+		http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch-3.0.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd">
+
+    <context:property-placeholder order="20000" ignore-unresolvable="true" />
+    
+    <bean id="protocolFileName" class="java.lang.String" scope="job">
+        <constructor-arg value="#{dateFormat.format(jobExecution.startTime)}_#{jobExecution.jobInstance.jobName}.txt" />
+    </bean>
+    
+    <bean id="dateFormat" class="java.text.SimpleDateFormat">
+        <constructor-arg value="yyyyMMdd_HHmmss" />
+    </bean>
+    
+    <bean id="protocol" class="de.proadvise.customer.InterfaceSapSiemensMuc.protocol.JobProtocol" scope="job">
+        <property name="messageParser" ref="messageParser" />
+        <property name="messageFormat" value="[{type}] {text}" />
+        <property name="protocolResource" value="file:${application.directory.protocol}/#{protocolFileName}" />
+    </bean>
+
+    <bean id="messageParser" class="de.proadvise.tool.batch.protocol.MessageParserImpl">
+        <property name="messagePropertiesResource" value="classpath:protocol-messages.properties" />
+    </bean>
+    
+    <!-- Verwende Singleton, da ansonsten Proxy verwendet wird. Das kann nicht als VelocityEngine-Klasse gecastet werden -->
+    <bean id="velocity" class="de.proadvise.customer.InterfaceSapSiemensMuc.configuration.VelocityEngineFactory"/>
+    
+    <bean id="mailContextMap" class="java.util.concurrent.ConcurrentHashMap" scope="job">
+        <constructor-arg>
+            <map>
+                <entry key="protocol_name" value-ref="protocolFileName" />
+                <entry key="protocol_path" value="${application.directory.protocol.public}" />
+            </map>
+        </constructor-arg>
+    </bean>
+    
+    <bean id="mailSender" class="de.proadvise.tool.mail.ConfigurationJavaMailSenderImpl" scope="job">
+        <property name="configuration" ref="applicationConfiguration" />
+        <property name="passwordExtractor" ref="passwordExtractor" />
+    </bean>
+
+    <bean id="onSuccessMessagePreparator" class="de.proadvise.tool.mail.DefaultMimeMessagePreparatorImpl" scope="job" >
+        <property name="mailConfiguration" ref="applicationConfiguration" />
+        <property name="mailContext" ref="mailContextMap" />
+        <property name="velocityEngine" ref="velocity" />
+        <property name="templateLocation" value="config/mail/on-success-template.txt" />
+    </bean>
+    
+    <bean id="onFailedMessagePreparator" class="de.proadvise.tool.mail.DefaultMimeMessagePreparatorImpl" scope="job" >
+        <property name="mailConfiguration" ref="applicationConfiguration" />
+        <property name="mailContext" ref="mailContextMap" />
+        <property name="velocityEngine" ref="velocity" />
+        <property name="templateLocation" value="config/mail/on-failed-template.txt" />
+    </bean>
+    
+    <bean id="onSuccessMailService" class="de.proadvise.tool.mail.MailServiceImpl" scope="job">
+        <property name="mailSender" ref="mailSender" />
+        <property name="mimeMessagePreparator" ref="onSuccessMessagePreparator" />
+    </bean>
+    
+    <bean id="onFailedMailService" class="de.proadvise.tool.mail.MailServiceImpl" scope="job">
+        <property name="mailSender" ref="mailSender" />
+        <property name="mimeMessagePreparator" ref="onFailedMessagePreparator" />
+    </bean>
+    
+    <bean id="onCompletionMailSenderTasklet" class="de.proadvise.customer.InterfaceSapSiemensMuc.item.MailSenderTasklet" scope="step">
+        <property name="mailService" ref="onSuccessMailService" />
+        <property name="mailContext" ref="mailContextMap" />
+    </bean>
+    
+    <bean id="onFailedMailSenderTasklet" class="de.proadvise.customer.InterfaceSapSiemensMuc.item.MailSenderTasklet" scope="step">
+        <property name="mailService" ref="onFailedMailService" />
+        <property name="mailContext" ref="mailContextMap" />
+    </bean>
+    
+</beans>

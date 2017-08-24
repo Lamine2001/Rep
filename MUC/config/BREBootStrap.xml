@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?><BootStrap xmlns:xalan="http://xml.apache.org/xslt">
+   <Database>
+      <URL>jdbc:oracle:thin:@sap01950.os.fth.sbs.de:6201:PMLCPROD</URL>
+      <UserName>pubuser</UserName>
+      <Password>AE04F0BE3C4DBAD6BB5A089F8424887FE4DF7EC81F536D69C774FCC21B6A8A172EE5CA9449E5C016C5C15071461497C74A08AE04</Password>
+      <Driver>oracle.jdbc.OracleDriver</Driver>
+      <PublicGroupId>1</PublicGroupId>
+   </Database>
+   <CfgVersion>16.210</CfgVersion>
+   <Configurations>
+      <BRE name="Schnittstelle SAP-P6 Werk MUC" instances="1" logDir="D:\P6EPPM_162\p6\WebAccessLogs"/>
+   </Configurations>
+</BootStrap>

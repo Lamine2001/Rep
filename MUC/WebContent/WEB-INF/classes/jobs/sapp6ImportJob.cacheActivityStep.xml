@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:batch="http://www.springframework.org/schema/batch"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch.xsd">
+
+    <import resource="classpath:projectGraph-context.xml" />
+    <import resource="classpath:activityGraph-context.xml" />
+    
+    <bean id="nestedGraphReader" class="de.proadvise.tool.batch.item.support.NestedItemReader" scope="step">
+        <property name="parentDelegate" ref="projectGraphReader"/>
+        <property name="childDelegate" ref="activityGraphReader"/>
+        <property name="mediator" ref="projectGraphMediator"/>
+    </bean>
+
+    <bean id="projectGraphMediator" class="de.proadvise.customer.InterfaceSapSiemensMuc.dao.bograph.ProjectActivityGraphMediator" scope="step">
+        <constructor-arg ref="projectBeanConditionParameters"/>
+    </bean>
+    <bean id="projectBeanConditionParameters" class="de.proadvise.tool.p6util.dao.namedparam.BeanConditionParameters" scope="step"/>
+    <bean id="activityProjectConditionParameters" class="de.proadvise.tool.p6util.dao.namedparam.CompositeConditionParameters" scope="step">
+        <property name="delegates">
+            <list>
+                <ref bean="projectBeanConditionParameters" />
+            </list>
+        </property>
+    </bean>
+    
+    <!-- activityQueryProvider fuer die ActivityGraphFactory -->
+    <bean id="activityQueryProvider" class="de.proadvise.tool.p6util.dao.DefaultP6QueryProvider" scope="step">
+        <property name="fields" value="ObjectId,ProjectObjectId,WBSObjectId,Id,ProjectId,StartDate,ActualStartDate,FinishDate,ActualFinishDate,PrimaryResourceId,Status" />
+        <property name="whereClausePattern" value="ProjectObjectId = :objectId" />
+        <property name="orderByClause" value="ProjectObjectId,ObjectId" />
+    </bean>
+    
+    <bean id="activityGraphForCachingValidator" class="de.proadvise.customer.InterfaceSapSiemensMuc.item.validator.ActivityGraphForCachingValidator">
+        <property name="netzplannummerLabel" value="${p6.dictionary.udf_type.netzplannummer.label}" />
+        <property name="netzplanvorgangLabel" value="${p6.dictionary.udf_type.netzplanvorgang.label}" />
+    </bean>
+    <bean id="activityGraphForCachingFilterProcessor" class="org.springframework.batch.item.validator.ValidatingItemProcessor">
+        <property name="filter" value="true" />
+        <property name="validator" ref="activityGraphForCachingValidator" />
+    </bean>
+    <bean id="activityGraphToCachedActivityMapperProcessor" class="de.proadvise.tool.batch.item.mapping.ItemMappingProcessor" scope="step">
+        <property name="mapper" ref="activityGraphToCachedActivityMapper" />
+    </bean>
+    <bean id="activityGraphToCachedActivityMapper" class="de.proadvise.common.mapper.SimpleMapper">
+        <constructor-arg value="de.proadvise.customer.InterfaceSapSiemensMuc.domain.CachedActivity" />
+        <property name="mapping" ref="activityGraphToCachedActivityMapping" />
+    </bean>
+    <bean id="activityGraphToCachedActivityMapping" class="de.proadvise.customer.InterfaceSapSiemensMuc.item.mapper.ActivityGraph2CachedActivityMapping">
+        <property name="netzplannummerLabel" value="${p6.dictionary.udf_type.netzplannummer.label}" />
+        <property name="netzplanvorgangLabel" value="${p6.dictionary.udf_type.netzplanvorgang.label}" />
+    </bean>
+    <bean id="activityGraphProcessor" class="org.springframework.batch.item.support.CompositeItemProcessor">
+        <property name="delegates">
+            <list>
+                <ref bean="activityGraphForCachingFilterProcessor" />
+                <ref bean="activityGraphToCachedActivityMapperProcessor" />
+            </list>
+        </property>
+    </bean>
+    
+    <bean id="cacheActivityWriter" class="org.springframework.batch.item.database.JpaItemWriter">
+        <property name="entityManagerFactory" ref="cacheEntityManagerFactory" />
+    </bean>
+    
+    
+    <batch:step id="cacheActivityStep">
+        <batch:tasklet transaction-manager="cacheTransactionManager">
+            <batch:chunk reader="nestedGraphReader" processor="activityGraphProcessor"
+                writer="cacheActivityWriter" commit-interval="500" />
+        </batch:tasklet>
+    </batch:step>
+</beans>

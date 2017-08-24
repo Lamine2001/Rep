@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:util="http://www.springframework.org/schema/util" xmlns:batch="http://www.springframework.org/schema/batch"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+		http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-4.0.xsd
+		http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch-3.0.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd">
+    
+    <!-- Loese Properties auf, falls Job im Funktionstest ohne Application gestartet worden ist -->
+    <context:property-placeholder order="10000" location="classpath:application.properties" ignore-unresolvable="true" />
+    
+    <import resource="classpath:protocol-context.xml" />
+    
+    <bean id="inputFile" class="org.springframework.core.io.FileSystemResource" scope="job">
+        <constructor-arg value="#{jobParameters['input.file']}" />
+    </bean>
+
+    <!-- BA - P6 ItemReader -->
+    <bean id="avbaFileItemReader" class="org.springframework.batch.item.file.FlatFileItemReader" scope="step">
+        <property name="resource" ref="inputFile" />
+        <property name="lineMapper">
+            <bean
+                class="org.springframework.batch.item.file.mapping.DefaultLineMapper">
+                <property name="lineTokenizer">
+                    <bean
+                        class="org.springframework.batch.item.file.transform.DelimitedLineTokenizer">
+                        <property name="delimiter">
+                            <util:constant
+                                static-field="org.springframework.batch.item.file.transform.DelimitedLineTokenizer.DELIMITER_TAB" />
+                        </property>
+                        <property name="names"
+                            value="${avba.input.file.column.names}" />
+                    </bean>
+                </property>
+                <property name="fieldSetMapper">
+                    <bean
+                        class="org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper">
+                        <property name="prototypeBeanName" value="avbaBean"/>
+                    </bean>
+                </property>
+            </bean>
+        </property>
+    </bean>
+
+    <bean id="avbaBean" class="de.proadvise.customer.InterfaceSapSiemensMuc.domain.AvBaItem" scope="prototype" />
+
+    <!-- Processor -->
+    <bean id="avbaItem2ResourceAssignmentMappingProcessor" class="de.proadvise.tool.batch.item.mapping.ItemMappingProcessor"
+            scope="step">
+        <property name="mapper" ref="baItem2ResourceAssignmentMapper" />
+    </bean>
+
+    <bean id="baItem2ResourceAssignmentMapper"
+        class="de.proadvise.customer.InterfaceSapSiemensMuc.item.mapper.AvBaItem2ResourceAssignmentMapper"
+        scope="step">
+        <property name="identifying" ref="resourceAssignmentService" />
+        <property name="mapping" ref="baItem2ResourceAssignmentMapping" />
+    </bean>
+    
+    <bean id="baItem2ResourceAssignmentMapping"
+        class="de.proadvise.customer.InterfaceSapSiemensMuc.item.mapper.BaItem2ResourceAssignmentMapping"
+        scope="step" />
+        
+    <!-- Service zur Identifikation eines ResourceAssignments anhand der Kriterien: projectId, activityId und resourceId  -->
+    <bean id="resourceAssignmentService"
+        class="de.proadvise.tool.p6util.services.ResourceAssignmentByProjectIdActivityIdResourceIdIdentifyingServiceImpl"
+        scope="step">
+        <property name="resourceAssignmentDao" ref="resourceAssignmentServiceDao" />
+        <property name="resourceAssignmentQueryProvider" ref="resourceAssignmentServiceQueryProvider" />
+    </bean>
+    
+    <!-- Hinweis: Falls weitere ResourceAssignment-Felder benoetigt werden, diese hier unter fields ergaenzen. -->
+    <bean id="resourceAssignmentServiceQueryProvider" class="de.proadvise.tool.p6util.dao.DefaultP6QueryProvider" scope="step">
+        <property name="fields" value="ObjectId,ProjectId,ActivityId,ResourceId,CreateDate,PlannedUnits" />
+        <property name="whereClausePattern" value="ProjectId = :projectId" />
+        <property name="orderByClause" value="ObjectId" />
+    </bean>
+    
+    <bean id="resourceAssignmentServiceComparator"
+        class="de.proadvise.tool.p6util.dao.relation.ActivityIdResourceIdToResourceAssignmentRelationComparator" scope="step">
+    </bean>
+
+    <bean id="removingCachedRelatedBoResultSet" class="de.proadvise.tool.p6util.dao.relation.RemovingCachedRelatedBoResultSet"
+        scope="prototype">
+        <property name="comparator" ref="resourceAssignmentServiceComparator" />
+    </bean>
+
+    <bean id="resourceAssignmentServiceDao" class="de.proadvise.tool.p6util.dao.DefaultBoDao" scope="step">
+        <constructor-arg
+            value="com.primavera.integration.client.bo.object.ResourceAssignment" />
+        <property name="sessionFactory" ref="sessionFactory" />
+        <property name="prototypeResultSetBeanName" value="removingCachedRelatedBoResultSet" />
+    </bean>
+    
+    <bean id="resourceAssignmentWriter" class="de.proadvise.tool.batch.item.p6api.P6ItemWriter" scope="step">
+        <property name="p6SessionFactory" ref="sessionFactory" />
+        <property name="boHelper">
+            <bean id="resourceAssignmentHelperFactory"
+                class="de.proadvise.tool.p6util.dao.BoHelperFactoryBean">
+                <property name="boType"
+                    value="com.primavera.integration.client.bo.object.ResourceAssignment" />
+            </bean>
+        </property>
+    </bean>
+    
+    <!-- Validation -->
+    <bean id="p6Dictionary" class="java.util.concurrent.ConcurrentHashMap" scope="job" />
+        
+    <bean id="dictionaryConfiguration" class="org.apache.commons.configuration.CompositeConfiguration" scope="job">
+        <constructor-arg>
+            <list>
+                <ref bean="applicationConfiguration" />
+                <bean id="p6DictionaryValidation" class="org.apache.commons.configuration.PropertiesConfiguration">
+                    <constructor-arg value="validation/p6ba_validation_import.properties" />
+                </bean>
+            </list>
+        </constructor-arg>
+    </bean>
+
+    <bean id="projectCodeTypeValidator" class="de.proadvise.tool.p6util.validation.ProjectCodeTypeValidator" scope="step">
+        <property name="sessionFactory" ref="sessionFactory" />
+        <property name="dictionary" ref="p6Dictionary" />
+    </bean>
+    <bean id="projectCodeValidator" class="de.proadvise.tool.p6util.validation.ProjectCodeValidator" scope="step">
+        <property name="sessionFactory" ref="sessionFactory" />
+        <property name="dictionary" ref="p6Dictionary" />
+    </bean>
+    
+    <bean id="dictionaryValidator" class="de.proadvise.tool.p6util.validation.P6DictionaryValidator" scope="step">
+        <property name="dictionaryObjectValidators">
+            <map>
+                <entry key="project_code_type" value-ref="projectCodeTypeValidator" />
+                <entry key="project_code" value-ref="projectCodeValidator" />
+            </map>
+        </property>
+    </bean>
+    <bean id="validationErrors" class="de.proadvise.tool.p6util.validation.ConfigurationBindingResult" scope="step">
+        <constructor-arg ref="dictionaryConfiguration" />
+    </bean>
+    
+    <bean id="p6DictionaryValidationTasklet" class="de.proadvise.tool.batch.tasklet.P6DictionaryValidationTasklet" scope="step">
+        <property name="dictionaryConfiguration" ref="dictionaryConfiguration" />
+        <property name="dictionaryValidator" ref="dictionaryValidator" />
+        <property name="validationErrors" ref="validationErrors"/>
+    </bean>
+
+    <!-- Job Definition -->
+    <batch:step id="validation">
+        <batch:tasklet ref="p6DictionaryValidationTasklet" />
+    </batch:step>
+    
+    <batch:step id="importStep">
+        <tasklet>
+            <chunk reader="avbaFileItemReader" processor="avbaItem2ResourceAssignmentMappingProcessor" writer="resourceAssignmentWriter" commit-interval="250" />
+        </tasklet>
+    </batch:step>
+
+    <batch:step id="mailOnCompleteStep">
+        <batch:tasklet ref="onCompletionMailSenderTasklet" />
+    </batch:step>
+    
+    <batch:step id="mailOnFailedStep">
+        <batch:tasklet ref="onFailedMailSenderTasklet" />
+    </batch:step>
+
+    <batch:job id="bap6ImportJob">
+        <batch:step id="s1_validation" parent="validation" >
+            <batch:next on="FAILED" to="s3b_onFailed" />
+            <batch:next on="*" to="s2_import" />
+            <batch:listeners>
+                <batch:listener ref="protocol" />
+            </batch:listeners>
+        </batch:step>
+        <batch:step id="s2_import" parent="importStep" >
+            <batch:next on="FAILED" to="s3b_onFailed" />
+            <batch:next on="*" to="s3a_onComplete" />
+            <batch:listeners>
+                <batch:listener ref="protocol" />
+            </batch:listeners>
+        </batch:step>
+        <batch:step id="s3a_onComplete" parent="mailOnCompleteStep" />
+        <batch:step id="s3b_onFailed" parent="mailOnFailedStep" >
+            <batch:fail on="*" />
+        </batch:step>
+        <batch:listeners>
+            <batch:listener ref="protocol" />
+        </batch:listeners>
+    </batch:job>
+
+</beans>
