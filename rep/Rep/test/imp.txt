@@ -1,0 +1,20 @@
+G:/Interfaces/Schnittstellen_Graz_Test/2016_05_31_ASV_P6_15.2.7_API_Schnittstelle_V2.3/setup/bin/P6ASVInterface.bat -updateProject -inputFile 2017_01_19_12_40_06__S00000013_00__asv-p6.xml -targetEpsId EN_TRAN
+
+
+prg arg
+-updateProject -inputFile 2017_01_19_12_40_06__S00000013_00__asv-p6.xml -targetEpsId EN_TRAN
+vm arg
+-Dprimavera.bootstrap.home="G:\Eclipse W\ASV\WebContent\WEB-INF\classes\config"
+
+defthw99m7nsrv
+defthw99wn6srv
+
+
+INFO  2017-03-31 10:56:37,237 init logger instance
+INFO  2017-03-31 10:56:44,753 Login on Instance [PMPROD07] User [bw12primaz] successful.
+INFO  2017-03-31 10:56:56,909 Logout on Instance [PMPROD07] User [bw12primaz]
+INFO  2017-03-31 10:56:56,909 -updateProject -inputFile 2017_01_19_12_40_06__S00000013_00__asv-p6.xml -targetEpsId EN_TRAN  total processing time 19656 ms
+
+P6ASVInterface.bat -updateProject -inputFile 2017_01_19_12_40_06__S00000013_00__asv-p6.xml -targetEpsId EN_TRAN
+
+asv&Interface1
