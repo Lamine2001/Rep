@@ -1,0 +1,52 @@
+Dev server
+
+DKBDKB7TST013A
+
+E7DBA-sharm05r
+Infosys-9
+
+DKBDKB7TST013A:7005/Console
+
+D:\Oracle\Middleware\Oracle_Home\user_projects\domains\SWPFSNSP6
+
+Sql management studio
+
+DKBDKB7DBS059A
+
+FSNS_DTT_DEV
+
+fsns_app_user
+1.Primavera
+
+result = DriverManager.getConnection("jdbc:sqlserver://DKBDKB7DBS059A;databaseName=FSNS_DTT_DEV",
+					 "fsns_app_user", "1.Primavera");
+
+DB server Name: DKBDKB7DBS063A
+Web services server : DKBDKB7APP041A
+P6 DB Name : FLTP_P6_Preprod
+User ID/pwd : login with my credential as windows user account in SQL  : e7dba-sharm05r/Infosys-9
+
+
+
+
+http://DKBDKB7WEB007A:8203/p6     - Preprod P6 web url
+http://DKBDKB7APP041A:8206/p6ws/services  - preprod web services url
+
+
+sharm05r/infosys-10
+
+DKBDKB7DBS059A
+FLTP_P6_TEST
+sa  
+X9CIRYBVohQBPh8ndfR5
+
+
+
+
+select ibs.Row_Id,Created_Date,Source_System,Location_Shore,Customer_IFA,Customer_Name,Country_Id,Site_id,Site_Name,Site_Address,Contract_id,Contract_Name,Contract_Start_Date,Contract_End_Date,Turbine_Type,Turbine_Name,Turbine_Quantity,Turbine_Funct_Loc_ID,HQ_TECH_ID_NUMBER,RU_TECH_ID_NUMBER,Warranty_Start_Date,Warranty_End_Date,Error_Message,Error_Date,Status_Flag,Processed_Flag from IBASEDATA ibs,LastRead  lr where lr.Table_Name='IBASEDATA' and  ibs.Created_Date>=lr.LastReadDate and ibs.status_flag not in ('Y','NV','E');
+select * from IBASEDATA where status_flag not in ('Y','NV','E');
+update IBASEDATA set status_flag = 'Y' where status_flag not in ('Y','NV','E');
+select * from IBASEDATA where Site_id = 'DE0022';
+update IBASEDATA set status_flag = '' where Site_id = 'DE0022';
+
+select sfd.Row_Id,Created_Date,Source_System,Opportunity_ID,Opportunity_Name,Work_Type,Turbine_Quantity,Turbine_Type,Location_Shore,Region,Customer_IFA,Customer_Name,Country_Id,Country_Name,Contract_Start_Date,Contract_End_Date,Probability,External_Status,Functional_Location,Error_Message,Error_Date,Status_Flag,Processed_Flag from SFDCDATA sfd,LastRead  lr where lr.Table_Name='SFDCDATA' and  sfd.Created_Date>=lr.LastReadDate and sfd.status_flag not in ('Y','NV','E')

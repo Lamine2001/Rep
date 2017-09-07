@@ -1,0 +1,16 @@
+Major crane hours, major non crane hours – major componene replacement
+Minor hours – trouble shooting
+
+
+DB details:
+Server Name : dkbdkb7qka
+Database Name : ARM
+Table : [ARM].[dbo].[FailureRates]
+SINGA00S
+Sudha@572
+
+
+SELECT TOP 10 Measure,Year,Value FROM [ARM].[dbo].[FailureRates] where Measure ='Major crane hours' or Measure = 'Major non-crane hours';
+
+SELECT TOP 10 Measure,Year,Value FROM dbo.FailureRates where Measure ='Major crane hours' or Measure = 'Major non-crane hours'
+SELECT TOP 10 Measure,Year,Value FROM [ARM].[dbo].[FailureRates] where Measure ='Minor hours'
